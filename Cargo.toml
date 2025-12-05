@@ -1,0 +1,15 @@
+[package]
+name = "MTCGAGA"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+xcap = "0.7.1"
+axum = "0.8.7"
+rdev = "0.5.3"
+image = {version = "0.25.9", features = ["bmp"]}
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.48.0", features = ["full"] }
+
+[package.metadata.windows_subsystem]
+windows = "windows"

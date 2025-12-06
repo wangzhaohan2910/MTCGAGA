@@ -7,22 +7,43 @@ use axum::{
 };
 use rdev::listen;
 use serde::Deserialize;
-use std::io::{Cursor, Seek, SeekFrom};
-use std::process::Command;
-use std::sync::Arc;
-use tokio::spawn;
+use std::{
+    env::args,
+    io::{Cursor, Seek, SeekFrom},
+    sync::{Arc, Mutex},
+};
+use tokio::{main, net::TcpListener, process::Command, spawn};
 use xcap::{Monitor, image::ImageFormat};
 #[derive(Deserialize)]
 struct Frm {
     area: String,
 }
-#[tokio::main]
+#[main]
 async fn main() {
-    let lock = Arc::new(std::sync::Mutex::new(String::new()));
+    let mut arg = args();
+    arg.next();
+    let lock = Arc::new(Mutex::new(String::new()));
     let lock1 = Arc::clone(&lock);
     let lock2 = Arc::clone(&lock);
     let lock3 = Arc::clone(&lock);
-    let make_header = || {
+    spawn(async {
+        let lockin = lock2;
+        loop {
+            let lockinin = lockin.clone();
+            listen(move |e| {
+                if let Some(name) = e.name {
+                    *lockinin.lock().unwrap() += &name;
+                }
+            })
+            .unwrap();
+        }
+    });
+    axum::serve(
+        TcpListener::bind(String::from ("0.0.0.0:") + &arg.next().unwrap_or(String::from("1145"))).await.unwrap(),
+        Router::new()
+            .route("/", get(async move || {
+        let data = lock1.lock();
+        ({
         let mut head = HeaderMap::new();
         head.insert(
             "Cache-Control",
@@ -31,37 +52,28 @@ async fn main() {
         head.insert("Expires", HeaderValue::from_static("-1"));
         head.insert("Pragma", HeaderValue::from_static("no-cache"));
         head
-    };
-    spawn(async {
-        let lockin = lock2;
-        loop {
-            let lockinin = lockin.clone();
-            listen(move |e| *lockinin.lock().unwrap() += &e.name.unwrap_or(String::from("")))
-                .unwrap();
-        }
-    });
-    let root = async move || {
-        let data = lock1.lock();
-        (make_header(), Html(
+    }, Html(
             String::from(
                 r#"<!DOCTYPE html><html><body><form action="/cmd" method="post"><textarea name="area"></textarea><input type="submit" value="提交" /></form><a href="/clear">清空</a><pre style="white-space: pre-wrap;">"#,
             ) + data.unwrap().as_str()
-                + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},200);</script></body></html>"#,
+                + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},160);</script></body></html>"#,
         )).into_response()
-    };
-    let cmd = async |Form(Frm { area })| {
-        Command::new(area).spawn().unwrap();
+    }))
+            .route("/cmd", post(async |Form(Frm { mut area })| {
+        area = String::from("cmd /c ") + &area;
+        let parts: Vec<&str> = area.split_whitespace().collect();
+        Command::new(parts[0]).args(&parts[1..]).spawn().unwrap();
         Html(
             r#"<!DOCTYPE html><html><body><script>window.location.href="/"</script></body></html>"#,
         )
-    };
-    let clear = async move || {
+    }))
+            .route("/clear", get(async move || {
         lock3.lock().unwrap().clear();
         Html(
             r#"<!DOCTYPE html><html><body><script>window.location.href="/"</script></body></html>"#,
         )
-    };
-    let screen = async || {
+    }))
+            .route("/screen.bmp", get(async || {
         let mut buf = Cursor::new(Vec::new());
         let mnt = &Monitor::all().unwrap()[0];
         mnt.capture_image()
@@ -70,12 +82,8 @@ async fn main() {
             .unwrap();
         buf.seek(SeekFrom::Start(0)).unwrap();
         buf.into_inner()
-    };
-    let app = Router::new()
-        .route("/", get(root))
-        .route("/cmd", post(cmd))
-        .route("/screen.bmp", get(screen))
-        .route("/clear", get(clear));
-    let lis = tokio::net::TcpListener::bind("0.0.0.0:1145").await.unwrap();
-    axum::serve(lis, app).await.unwrap();
+    })),
+    )
+    .await
+    .unwrap();
 }

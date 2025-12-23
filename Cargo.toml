@@ -8,7 +8,6 @@ xcap = "0.8.0"
 axum = "0.8.7"
 device_query = "4.0.1"
 rdev = "0.5.3"
-html-escape = "0.2.13"
 image = {version = "0.25.9", features = ["bmp"]}
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.48.0", features = ["full"] }

@@ -45,7 +45,7 @@ async fn main() {
                     *l.lock().unwrap() += match &name[..] {
                         "&" => "&amp;",
                         "<" => "&lt;",
-                        _others => _others,
+                        others => others,
                     };
                 }
             })

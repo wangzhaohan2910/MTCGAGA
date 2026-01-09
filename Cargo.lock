@@ -12,6 +12,7 @@ dependencies = [
  "image",
  "rdev",
  "serde",
+ "shlex",
  "tokio",
  "xcap",
 ]

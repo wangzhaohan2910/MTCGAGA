@@ -90,16 +90,16 @@ async fn main() {
                         _ => (),
                     }
 
-                    Html("<script>window.location.href='?'</script>")
+                    Html("<script>window.location.href=''</script>")
                 })
                 .get(async move || {
                     Html(
                         String::from(
-                            r#"<!DOCTYPE html><html><body><form action="/" method="post"><select name="choice"><option value="cmd">命令</option><option value="code">键盘码</option><option value="eni">enigo按键</option><option value="rdev">rdev按键</option><option value="txt">输入</option><option value="clr">清空</option></select><input name="text"/><input type="submit"/></form><pre style="white-space:pre-wrap;">"#,
+                            "<!DOCTYPE html><html><body><form action='/' method='post'><select name='choice'><option value='cmd'>命令</option><option value='code'>键盘码</option><option value='eni'>enigo按键</option><option value='rdev'>rdev按键</option><option value='txt'>输入</option><option value='clr'>清空</option></select><input name='text'/><input type='submit'/></form><pre style='white-space:pre-wrap;'>",
                         ) + lock1.lock().unwrap().as_str()
                             + "<hr>"
                             + lck1.lock().unwrap().as_str()
-                            + r#"</pre><img src="screen.bmp"/><script>const ws=new WebSocket('screen.bmp');const img=document.querySelector('img');ws.onmessage=(e)=>{if(e.data instanceof Blob)img.src=URL.createObjectURL(event.data)}</script></body></html>"#,
+                            + "</pre><img src='screen.bmp'/><script>const ws=new WebSocket('screen.bmp');const img=document.querySelector('img');ws.onmessage=(e)=>{if(e.data instanceof Blob)img.src=URL.createObjectURL(event.data)}</script></body></html>",
                     )
                 }),
             )

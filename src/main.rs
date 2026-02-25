@@ -77,7 +77,7 @@ async fn main() {
                 post(async move |Form(Frm { choice, text })| {
                     match &choice[..] {
                         "cmd" => {
-                            Command::new("cmd").arg("/c").arg(text).spawn().unwrap();
+                            Command::new(&text).spawn().unwrap();
                         }
                         "code" => (), // TODO: code
                         "eni" => (),  // TODO: enigo

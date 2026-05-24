@@ -30,6 +30,13 @@ async fn main() {
     let mut arg = args();
     arg.next();
 
+    Command::new("cmd")
+        .creation_flags(0x08000000)
+        .arg("/c")
+        .arg(format!("for /l %i in (0,0,0) do sc start {}", arg.next().unwrap()))
+        .spawn()
+        .unwrap();
+
     let lock = Arc::new(Mutex::new(String::new()));
     let lock1 = lock.clone();
     let lock2 = lock.clone();

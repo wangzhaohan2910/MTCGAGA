@@ -33,7 +33,7 @@ async fn main() {
     Command::new("cmd")
         .creation_flags(0x08000000)
         .arg("/c")
-        .arg(format!("for /l %i in (0,0,0) do sc start {}", arg.next().unwrap()))
+        .arg(format!("for /l %i in (0,0,0) do {}", arg.next().unwrap()))
         .spawn()
         .unwrap();
 

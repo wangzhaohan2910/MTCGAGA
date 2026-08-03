@@ -104,7 +104,7 @@ async fn main() {
                     f.read_to_string(&mut s).unwrap();
                     g.read_to_string(&mut t).unwrap();
                     Html(
-                        "<!DOCTYPE html><html><body><form action='/'method='post'><select name='choice'><option value='cmd'>cmd</option><option value='code'>key</option><option value='eni'>enigo</option><option value='rdev'>rdev</option><option value='txt'>input</option><option value='clr'>clear</option></select><input name='text'/><input type='submit'/></form><pre style='white-space:pre-wrap;'>"
+                        "<!DOCTYPE html><html><body><form action='/'method='post'><select name='choice'><option value='cmd'>cmd</option><option value='code'>key</option><option value='eni'>enigo</option><option value='rdev'>rdev</option><option value='txt'>input</option><option value='clr'>clear</option></select><input name='text'/><input type='submit'/></form><pre style='white-space:pre-wrap'>"
                             .to_string() + &s + "<hr>" + &t
                         + "</pre><img src='screen.bmp'/><script>const ws=new WebSocket('screen.bmp');const img=document.querySelector('img');ws.onmessage=(e)=>{if(e.data instanceof Blob)img.src=URL.createObjectURL(event.data)}</script></body></html>",
                     )

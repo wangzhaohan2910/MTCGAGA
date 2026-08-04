@@ -240,6 +240,8 @@ async fn main() {
                     }
                     zip.finish().unwrap();
                     Attachment::new(buf.into_inner())
+                        .filename("archive.zip")
+                        .content_type("application/zip")
                 })
                 .get(async move || {
                     let mut f = lck1.lock().unwrap();

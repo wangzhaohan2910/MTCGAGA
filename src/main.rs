@@ -8,8 +8,8 @@ use axum::{
 };
 use axum_extra::extract::Form;
 use device_query::{DeviceEvents, DeviceEventsHandler};
-use enigo::{Enigo, Keyboard, Settings};
-use rdev::listen;
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings};
+use rdev::{EventType, Key, listen, simulate};
 use std::{
     env::args,
     fs::OpenOptions,
@@ -17,13 +17,7 @@ use std::{
     os::windows::fs::OpenOptionsExt,
     sync::{Arc, Mutex},
 };
-use tokio::{
-    fs::{remove_dir_all, remove_file, symlink_metadata},
-    net::TcpListener,
-    process::Command,
-    spawn,
-    time::Duration,
-};
+use tokio::{net::TcpListener, process::Command, spawn, time::Duration};
 use xcap::{Monitor, image::ImageFormat};
 const FORM: &'static str = r#"<!DOCTYPE html>
 <html>
@@ -49,11 +43,11 @@ const FORM: &'static str = r#"<!DOCTYPE html>
                     <option value="txt">键入文本</option>
                     <option value="mre">鼠标相对移动</option>
                     <option value="mab">鼠标绝对移动</option>
-                    <option value="sli">滑动鼠标滚轮</option>
+                    <option value="scr">滑动鼠标滚轮</option>
                     <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
                     <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
                 </select>
-                <input type="text" placeholder="请输入参数……">
+                <input type="text" name="cmd" placeholder="请输入参数……">
                 <button type="button" onclick="addAfter(this)">添加</button>
                 <button type="button" onclick="removeItem(this)">删除</button>
             `;
@@ -95,7 +89,7 @@ const FORM: &'static str = r#"<!DOCTYPE html>
                 <option value="txt">键入文本</option>
                 <option value="mre">鼠标相对移动</option>
                 <option value="mab">鼠标绝对移动</option>
-                <option value="sli">滑动鼠标滚轮</option>
+                <option value="scr">滑动鼠标滚轮</option>
                 <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
                 <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
             </select>
@@ -205,7 +199,77 @@ async fn main() {
                                 g.seek(SeekFrom::Start(0)).unwrap();
                             }
                             "txt" => enigo.lock().unwrap().text(&b).unwrap(),
-                            // TODO
+                            "mre" => {
+                                let mut parts = b.split_whitespace();
+                                enigo
+                                    .lock()
+                                    .unwrap()
+                                    .move_mouse(
+                                        parts.next().unwrap().parse().unwrap(),
+                                        parts.next().unwrap().parse().unwrap(),
+                                        Coordinate::Rel,
+                                    )
+                                    .unwrap()
+                            }
+                            "mab" => {
+                                let mut parts = b.split_whitespace();
+                                enigo
+                                    .lock()
+                                    .unwrap()
+                                    .move_mouse(
+                                        parts.next().unwrap().parse().unwrap(),
+                                        parts.next().unwrap().parse().unwrap(),
+                                        Coordinate::Abs,
+                                    )
+                                    .unwrap()
+                            }
+                            "scr" => enigo
+                                .lock()
+                                .unwrap()
+                                .scroll(b.parse().unwrap(), Axis::Vertical)
+                                .unwrap(),
+                            "kdn" => match &b[..] {
+                                "l" => enigo
+                                    .lock()
+                                    .unwrap()
+                                    .button(Button::Left, Direction::Press)
+                                    .unwrap(),
+                                "m" => enigo
+                                    .lock()
+                                    .unwrap()
+                                    .button(Button::Middle, Direction::Press)
+                                    .unwrap(),
+                                "r" => enigo
+                                    .lock()
+                                    .unwrap()
+                                    .button(Button::Right, Direction::Press)
+                                    .unwrap(),
+                                k => {
+                                    simulate(&EventType::KeyPress(Key::Unknown(k.parse().unwrap())))
+                                        .unwrap()
+                                }
+                            },
+                            "kup" => match &b[..] {
+                                "l" => enigo
+                                    .lock()
+                                    .unwrap()
+                                    .button(Button::Left, Direction::Release)
+                                    .unwrap(),
+                                "m" => enigo
+                                    .lock()
+                                    .unwrap()
+                                    .button(Button::Middle, Direction::Release)
+                                    .unwrap(),
+                                "r" => enigo
+                                    .lock()
+                                    .unwrap()
+                                    .button(Button::Right, Direction::Release)
+                                    .unwrap(),
+                                k => simulate(&EventType::KeyRelease(Key::Unknown(
+                                    k.parse().unwrap(),
+                                )))
+                                .unwrap(),
+                            },
                             _ => (),
                         }
                     }

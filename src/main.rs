@@ -2,22 +2,16 @@
 use axum::{
     Router,
     extract::ws::{Message, WebSocketUpgrade},
-    response::Html,
+    response::{Html, IntoResponse},
     routing::{get, post},
     serve,
 };
 use axum_extra::{extract::Form, response::Attachment};
 use device_query::{DeviceEvents, DeviceEventsHandler};
-use enigo::{Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings};
-use rdev::{EventType, Key, listen, simulate};
-use std::{
-    env::args,
-    fs::{File, OpenOptions, read_dir, symlink_metadata},
-    io::{Cursor, Read, Seek, SeekFrom, Write, copy},
-    os::windows::fs::OpenOptionsExt,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings, Key};
+use rdev::listen;
+use std::{env::args, fs::{File, OpenOptions, read_dir, symlink_metadata}, io::{Cursor, Read, Seek, SeekFrom, Write, copy}, os::windows::fs::OpenOptionsExt, path::Path, sync::{Arc, Mutex}};
+use axum::http::StatusCode;
 use tokio::{net::TcpListener, process::Command, spawn, time::Duration};
 use webp_screenshot_rust::{CaptureConfig, WebPScreenshot};
 use zip::{ZipWriter, write::FileOptions};
@@ -135,7 +129,7 @@ async fn main() {
                 "/",
                 post(async move |Form(frm): Form<Vec<(String, String)>>| {
                     let mut buf = Cursor::new(Vec::new());
-                    let mut zip = ZipWriter::new(&mut buf);
+                    let mut zip = None;
                     for (a, b) in frm {
                         match &a[..] {
                             "cmd" => {
@@ -163,7 +157,13 @@ async fn main() {
                                 g.seek(SeekFrom::Start(0)).unwrap();
                             }
                             "txt" => enigo.lock().unwrap().text(&b).unwrap(),
-                            "zip" => add_to_zip(&mut zip, b.as_ref(), "").unwrap(),
+                            "zip" => {
+                                if zip.is_none() {
+                                    drop(zip);
+                                    zip = Some(ZipWriter::new(&mut buf));
+                                }
+                                add_to_zip(zip.as_mut().unwrap(), b.as_ref(), "").unwrap()
+                            },
                             "mre" => {
                                 let mut parts = b.split_whitespace();
                                 enigo
@@ -193,55 +193,39 @@ async fn main() {
                                 .unwrap()
                                 .scroll(b.parse().unwrap(), Axis::Vertical)
                                 .unwrap(),
-                            "kdn" => match &b[..] {
-                                "l" => enigo
-                                    .lock()
-                                    .unwrap()
-                                    .button(Button::Left, Direction::Press)
-                                    .unwrap(),
-                                "m" => enigo
-                                    .lock()
-                                    .unwrap()
-                                    .button(Button::Middle, Direction::Press)
-                                    .unwrap(),
-                                "r" => enigo
-                                    .lock()
-                                    .unwrap()
-                                    .button(Button::Right, Direction::Press)
-                                    .unwrap(),
-                                k => {
-                                    simulate(&EventType::KeyPress(Key::Unknown(k.parse().unwrap())))
-                                        .unwrap()
+                            "key" => for s in b.split_whitespace() {
+                                match &s[..1] {
+                                    "p" => match &s[1..] {
+                                        "l" => enigo.lock().unwrap().button(Button::Left, Direction::Press).unwrap(),
+                                        "r" => enigo.lock().unwrap().button(Button::Right, Direction::Press).unwrap(),
+                                        "c" => enigo.lock().unwrap().button(Button::Middle, Direction::Press).unwrap(),
+                                        o => enigo.lock().unwrap().key(Key::Other(o.parse().unwrap()), Direction::Press).unwrap()
+                                    },
+                                    "r" => match &s[1..] {
+                                        "l" => enigo.lock().unwrap().button(Button::Left, Direction::Release).unwrap(),
+                                        "r" => enigo.lock().unwrap().button(Button::Right, Direction::Release).unwrap(),
+                                        "c" => enigo.lock().unwrap().button(Button::Middle, Direction::Release).unwrap(),
+                                        o => enigo.lock().unwrap().key(Key::Other(o.parse().unwrap()), Direction::Release).unwrap()
+                                    },
+                                    _ => match &s[1..] {
+                                        "l" => enigo.lock().unwrap().button(Button::Left, Direction::Click).unwrap(),
+                                        "r" => enigo.lock().unwrap().button(Button::Right, Direction::Click).unwrap(),
+                                        "c" => enigo.lock().unwrap().button(Button::Middle, Direction::Click).unwrap(),
+                                        o => enigo.lock().unwrap().key(Key::Other(o.parse().unwrap()), Direction::Click).unwrap()
+                                    }
                                 }
-                            },
-                            "kup" => match &b[..] {
-                                "l" => enigo
-                                    .lock()
-                                    .unwrap()
-                                    .button(Button::Left, Direction::Release)
-                                    .unwrap(),
-                                "m" => enigo
-                                    .lock()
-                                    .unwrap()
-                                    .button(Button::Middle, Direction::Release)
-                                    .unwrap(),
-                                "r" => enigo
-                                    .lock()
-                                    .unwrap()
-                                    .button(Button::Right, Direction::Release)
-                                    .unwrap(),
-                                k => simulate(&EventType::KeyRelease(Key::Unknown(
-                                    k.parse().unwrap(),
-                                )))
-                                .unwrap(),
-                            },
+                            }
                             _ => (),
                         }
                     }
-                    zip.finish().unwrap();
-                    Attachment::new(buf.into_inner())
-                        .filename("archive.zip")
-                        .content_type("application/zip")
+                    if zip.is_some() {
+                        zip.unwrap().finish().unwrap();
+                        Attachment::new(buf.into_inner())
+                            .filename("archive.zip")
+                            .content_type("application/zip").into_response()
+                    } else {
+                        StatusCode::NO_CONTENT.into_response()
+                    }
                 })
                 .get(async move || {
                     let mut f = lck1.lock().unwrap();
@@ -279,8 +263,8 @@ async fn main() {
                                         <option value="mre">鼠标相对移动</option>
                                         <option value="mab">鼠标绝对移动</option>
                                         <option value="scr">滑动鼠标滚轮</option>
-                                        <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
-                                        <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
+                                        <option value="key">键鼠按键操作</option>
+                                        <option value="dly">延时</option>
                                     </select>
                                     <input type="text" name="cmd" placeholder="请输入参数……">
                                     <button type="button" onclick="addAfter(this)">添加</button>
@@ -324,8 +308,8 @@ async fn main() {
                                     <option value="mre">鼠标相对移动</option>
                                     <option value="mab">鼠标绝对移动</option>
                                     <option value="scr">滑动鼠标滚轮</option>
-                                    <option value="kdn">按下（键盘码或l、r、m表示鼠标键）</option>
-                                    <option value="kup">抬起（键盘码或l、r、m表示鼠标键）</option>
+                                    <option value="key">键鼠按键操作</option>
+                                    <option value="dly">延时</option>
                                 </select>
                                 <input type="text" name="cmd" placeholder="请输入参数……">
                                 <button type="button" onclick="addAfter(this)">添加</button>

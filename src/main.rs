@@ -2,17 +2,29 @@
 use axum::{
     Router,
     extract::ws::{Message, WebSocketUpgrade},
+    http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, post},
     serve,
 };
 use axum_extra::{extract::Form, response::Attachment};
 use device_query::{DeviceEvents, DeviceEventsHandler};
-use enigo::{Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings, Key};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use rdev::listen;
-use std::{env::args, fs::{File, OpenOptions, read_dir, symlink_metadata}, io::{Cursor, Read, Seek, SeekFrom, Write, copy}, os::windows::fs::OpenOptionsExt, path::Path, sync::{Arc, Mutex}};
-use axum::http::StatusCode;
-use tokio::{net::TcpListener, process::Command, spawn, time::Duration};
+use std::{
+    env::args,
+    fs::{File, OpenOptions, read_dir, symlink_metadata},
+    io::{Cursor, Read, Seek, SeekFrom, Write, copy},
+    os::windows::fs::OpenOptionsExt,
+    path::Path,
+    sync::{Arc, Mutex},
+};
+use tokio::{
+    net::TcpListener,
+    process::Command,
+    spawn,
+    time::{Duration, sleep},
+};
 use webp_screenshot_rust::{CaptureConfig, WebPScreenshot};
 use zip::{ZipWriter, write::FileOptions};
 
@@ -214,7 +226,8 @@ async fn main() {
                                         o => enigo.lock().unwrap().key(Key::Other(o.parse().unwrap()), Direction::Click).unwrap()
                                     }
                                 }
-                            }
+                            },
+                            "dly" => sleep(Duration::from_nanos_u128(b.parse().unwrap())).await,
                             _ => (),
                         }
                     }

